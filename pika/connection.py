@@ -1,8 +1,8 @@
 """Core connection objects"""
 import logging
 import platform
-import urllib
-import urlparse
+import urllib.request, urllib.parse, urllib.error
+import urllib.parse
 
 from pika import __version__
 from pika import callback
@@ -390,7 +390,7 @@ class URLParameters(Parameters):
         if url[0:4] == 'amqp':
             url = 'http' + url[4:]
 
-        parts = urlparse.urlparse(url)
+        parts = urllib.parse.urlparse(url)
 
         # Handle the Protocol scheme, changing to HTTPS so urlparse doesnt barf
         if parts.scheme == 'https':
@@ -409,15 +409,15 @@ class URLParameters(Parameters):
         if len(parts.path) == 1:
             raise ValueError('No virtual host specify, use %2f for /')
         path_parts = parts.path.split('/')
-        virtual_host = urllib.unquote(path_parts[1])
+        virtual_host = urllib.parse.unquote(path_parts[1])
         if self._validate_virtual_host(virtual_host):
             self.virtual_host = virtual_host
 
         # Handle query string values, validating and assigning them
-        values = urlparse.parse_qs(parts.query)
+        values = urllib.parse.parse_qs(parts.query)
 
         # Cast the various numeric values to the appropriate values
-        for key in values.keys():
+        for key in list(values.keys()):
             # Always reassign the first list item in query values
             values[key] = values[key].pop(0)
             if values[key].isdigit():
@@ -775,7 +775,7 @@ class Connection(object):
 
         """
         if self.is_open:
-            for channel_number in self._channels.keys():
+            for channel_number in list(self._channels.keys()):
                 if self._channels[channel_number].is_open:
                     self._channels[channel_number].close(reply_code, reply_text)
                 else:
@@ -922,7 +922,7 @@ class Connection(object):
         self.outbound_buffer = simplebuffer.SimpleBuffer()
 
         # Inbound buffer for decoding frames
-        self._frame_buffer = ''
+        self._frame_buffer = b''
 
         # Connection state, server properties and channels all change on
         # each connection

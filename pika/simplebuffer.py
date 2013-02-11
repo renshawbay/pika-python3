@@ -7,16 +7,13 @@ Use this to avoid concatenating or splitting large strings.
 
 """
 import os
-try:
-    import cStringIO as StringIO
-except ImportError: #pragma: no coverage
-    import StringIO
+import io
 
 # Python 2.4 support: os lacks SEEK_END and friends
 try:
     getattr(os, "SEEK_END")
 except AttributeError: #pragma: no coverage
-    os.SEEK_SET, os.SEEK_CUR, os.SEEK_END = range(3)
+    os.SEEK_SET, os.SEEK_CUR, os.SEEK_END = list(range(3))
 
 
 class SimpleBuffer(object):
@@ -49,18 +46,18 @@ class SimpleBuffer(object):
         :type data: str or unicode
 
         """
-        self.buf = self._get_stringio()
+        self.buf = self._get_BytesIO()
         if data is not None:
             self.write(data)
         self.buf.seek(0, os.SEEK_END)
 
-    def _get_stringio(self):
-        """Return an instance of the StringIO file object.
+    def _get_BytesIO(self):
+        """Return an instance of the BytesIO file object.
 
         :rtype: file
 
         """
-        return StringIO.StringIO()
+        return io.BytesIO()
 
     def write(self, *data_strings):
         """Append given strings to the buffer.
@@ -82,7 +79,7 @@ class SimpleBuffer(object):
 
         """
         if size is 0:
-            return ''
+            return b''
 
         self.buf.seek(self.offset)
 
@@ -102,11 +99,11 @@ class SimpleBuffer(object):
         """
         self.offset += size
         self.size -= size
-        # GC old StringIO instance and free memory used by it.
+        # GC old BytesIO instance and free memory used by it.
         if self.size == 0 and self.offset > 65536:
             self.buf.close()
             del self.buf
-            self.buf = StringIO.StringIO()
+            self.buf = io.BytesIO()
             self.offset = 0
 
     def read_and_consume(self, size):
@@ -141,7 +138,7 @@ class SimpleBuffer(object):
         """Remove all the data from buffer."""
         self.consume(self.size)
 
-    def __nonzero__(self):
+    def __bool__(self):
         """Is there any data in the buffer? ie not foo
 
         :rtype: bool

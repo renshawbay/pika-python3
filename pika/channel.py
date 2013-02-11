@@ -368,7 +368,7 @@ class Channel(object):
         self._set_state(self.CLOSING)
         self._reply_code, self._reply_text = reply_code, reply_text
         LOGGER.debug('Cancelling %i consumers', len(self._consumers))
-        for consumer_tag in self._consumers.keys():
+        for consumer_tag in list(self._consumers.keys()):
             self.basic_cancel(consumer_tag)
         self._shutdown()
 
@@ -412,7 +412,7 @@ class Channel(object):
         :rtype: list
 
         """
-        return self._consumers.keys()
+        return list(self._consumers.keys())
 
     def exchange_bind(self, callback=None, destination=None, source=None,
                       routing_key='', nowait=False, arguments=None):
@@ -1086,14 +1086,12 @@ class ContentFrameDispatcher(object):
         :rtype: tuple(pika.frame.Method, pika.frame.Header, str|unicode)
 
         """
-        try:
-            value = ''.join(self._body_fragments).decode('utf-8')
-            try:
-                value = str(value)
-            except UnicodeEncodeError:
-                pass
-        except UnicodeDecodeError:
-            value = ''.join(self._body_fragments)
+        
+        value = b''.join(self._body_fragments)
+        # try:
+        #     value = value.decode('utf-8')
+        # except UnicodeDecodeError:
+        #     pass  # return bytes
         content = (self._method_frame,
                    self._header_frame,
                    value)

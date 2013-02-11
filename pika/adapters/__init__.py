@@ -16,14 +16,14 @@
   synchronous operation on top of library for simple uses.
 
 """
-from base_connection import BaseConnection
-from asyncore_connection import AsyncoreConnection
-from blocking_connection import BlockingConnection
-from select_connection import SelectConnection
-from select_connection import IOLoop
+from .base_connection import BaseConnection
+from .asyncore_connection import AsyncoreConnection
+from .blocking_connection import BlockingConnection
+from .select_connection import SelectConnection
+from .select_connection import IOLoop
 
 # Dynamically handle 3rd party library dependencies for optional imports
 try:
-    from tornado_connection import TornadoConnection
+    from .tornado_connection import TornadoConnection
 except ImportError:
     TornadoConnection = None

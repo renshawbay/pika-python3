@@ -215,7 +215,7 @@ class SelectPoller(object):
                                                output_fileno,
                                                error_fileno,
                                                SelectPoller.TIMEOUT)
-        except select.error, error:
+        except select.error as error:
             return self._handler(self.fileno, ERROR, error)
 
         # Build our events bit mask
@@ -233,7 +233,7 @@ class SelectPoller(object):
     def process_timeouts(self):
         """Process the self._timeouts event stack"""
         start_time = time.time()
-        for timeout_id in self._timeouts.keys():
+        for timeout_id in list(self._timeouts.keys()):
             if (timeout_id in self._timeouts and
                 self._timeouts[timeout_id]['timestamp'] <= start_time):
                 handler = self._timeouts[timeout_id]['handler']
@@ -337,7 +337,7 @@ class KQueuePoller(SelectPoller):
         events = 0
         try:
             kevents = self._kqueue.control(None, 1000, SelectPoller.TIMEOUT)
-        except OSError, error:
+        except OSError as error:
             return self._handler(self.fileno, ERROR, error)
         for event in kevents:
             if event.filter == select.KQ_FILTER_READ and READ & self.events:
@@ -392,7 +392,7 @@ class PollPoller(SelectPoller):
             LOGGER.info("Unregistering poller on fd %d" % self.fileno)
             self.update_handler(self.fileno, 0)
             self._poll.unregister(self.fileno)
-        except IOError, err:
+        except IOError as err:
             LOGGER.debug("Got IOError while shutting down poller: %s", err)
 
     def poll(self, write_only=False):

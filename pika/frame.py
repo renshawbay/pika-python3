@@ -33,11 +33,11 @@ class Frame(amqp_object.AMQPObject):
         :rtype: str
 
         """
-        payload = ''.join(pieces)
+        payload = b''.join(pieces)
         return struct.pack('>BHI',
                            self.frame_type,
                            self.channel_number,
-                           len(payload)) + payload + chr(spec.FRAME_END)
+                           len(payload)) + payload + bytes([spec.FRAME_END])
 
     def marshal(self):
         """To be ended by child classes
@@ -183,10 +183,10 @@ class ProtocolHeader(amqp_object.AMQPObject):
         :rtype: str
 
         """
-        return 'AMQP' + struct.pack('BBBB', 0,
-                                    self.major,
-                                    self.minor,
-                                    self.revision)
+        return b'AMQP' + struct.pack('BBBB', 0,
+                                     self.major,
+                                     self.minor,
+                                     self.revision)
 
 
 def decode_frame(data_in):
@@ -200,7 +200,7 @@ def decode_frame(data_in):
     """
     # Look to see if it's a protocol header frame
     try:
-        if data_in[0:4] == 'AMQP':
+        if data_in[0:4] == b'AMQP':
             major, minor, revision = struct.unpack_from('BBB', data_in, 5)
             return 8, ProtocolHeader(major, minor, revision)
     except (IndexError, struct.error):
@@ -222,7 +222,7 @@ def decode_frame(data_in):
         return 0, None
 
     # The Frame termination chr is wrong
-    if data_in[frame_end - 1] != chr(spec.FRAME_END):
+    if data_in[frame_end - 1] != spec.FRAME_END:
         raise exceptions.InvalidFrameError("Invalid FRAME_END marker")
 
     # Get the raw frame data

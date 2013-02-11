@@ -51,7 +51,7 @@ class ContentFrameDispatcherTests(unittest.TestCase):
         obj.process(value)
         value = frame.Method(1, spec.Basic.Deliver())
         obj.process(value)
-        value = frame.Body(1, 'abc123')
+        value = frame.Body(1, b'abc123')
         obj.process(value)
         self.assertEqual(obj._body_fragments, [value.fragment])
 
@@ -61,9 +61,9 @@ class ContentFrameDispatcherTests(unittest.TestCase):
         obj.process(method_frame)
         header_frame = frame.Header(1, 6, spec.BasicProperties)
         obj.process(header_frame)
-        body_frame = frame.Body(1, 'abc123')
+        body_frame = frame.Body(1, b'abc123')
         response = obj.process(body_frame)
-        self.assertEqual(response, (method_frame, header_frame, 'abc123'))
+        self.assertEqual(response, (method_frame, header_frame, b'abc123'))
 
     def test_process_with_body_frame_six_bytes(self):
         obj = channel.ContentFrameDispatcher()
@@ -71,7 +71,7 @@ class ContentFrameDispatcherTests(unittest.TestCase):
         obj.process(method_frame)
         header_frame = frame.Header(1, 10, spec.BasicProperties)
         obj.process(header_frame)
-        body_frame = frame.Body(1, 'abc123')
+        body_frame = frame.Body(1, b'abc123')
         obj.process(body_frame)
         self.assertEqual(obj._seen_so_far, 6)
 
@@ -81,7 +81,7 @@ class ContentFrameDispatcherTests(unittest.TestCase):
         obj.process(method_frame)
         header_frame = frame.Header(1, 6, spec.BasicProperties)
         obj.process(header_frame)
-        body_frame = frame.Body(1, 'abcd1234')
+        body_frame = frame.Body(1, b'abcd1234')
         self.assertRaises(exceptions.BodyTooLongError,
                           obj.process, body_frame)
 
@@ -108,7 +108,7 @@ class ContentFrameDispatcherTests(unittest.TestCase):
         obj.process(method_frame)
         header_frame = frame.Header(1, 10, spec.BasicProperties)
         obj.process(header_frame)
-        body_frame = frame.Body(1, 'abc123')
+        body_frame = frame.Body(1, b'abc123')
         obj.process(body_frame)
         obj._reset()
         self.assertEqual(obj._header_frame, None)
@@ -119,7 +119,7 @@ class ContentFrameDispatcherTests(unittest.TestCase):
         obj.process(method_frame)
         header_frame = frame.Header(1, 10, spec.BasicProperties)
         obj.process(header_frame)
-        body_frame = frame.Body(1, 'abc123')
+        body_frame = frame.Body(1, b'abc123')
         obj.process(body_frame)
         obj._reset()
         self.assertEqual(obj._seen_so_far, 0)
@@ -130,7 +130,7 @@ class ContentFrameDispatcherTests(unittest.TestCase):
         obj.process(method_frame)
         header_frame = frame.Header(1, 10, spec.BasicProperties)
         obj.process(header_frame)
-        body_frame = frame.Body(1, 'abc123')
+        body_frame = frame.Body(1, b'abc123')
         obj.process(body_frame)
         obj._reset()
         self.assertEqual(obj._body_fragments, list())
@@ -142,18 +142,18 @@ class ContentFrameDispatcherTests(unittest.TestCase):
         obj.process(method_frame)
         header_frame = frame.Header(1, 14, spec.BasicProperties)
         obj.process(header_frame)
-        body_frame = frame.Body(1, 'utf8_value=\xe2\x9c\x93')
+        body_frame = frame.Body(1, b'utf8_value=\xe2\x9c\x93')
         method_frame, header_frame, body_value = obj.process(body_frame)
-        self.assertIsInstance(body_value, unicode)
+        self.assertIsInstance(body_value, bytes)
 
     def test_utf8_body_value(self):
-        expectation = u'utf8_value=✓'
+        expectation = 'utf8_value=✓'.encode("utf-8")
         obj = channel.ContentFrameDispatcher()
         method_frame = frame.Method(1, spec.Basic.Deliver())
         obj.process(method_frame)
         header_frame = frame.Header(1, 14, spec.BasicProperties)
         obj.process(header_frame)
-        body_frame = frame.Body(1, 'utf8_value=\xe2\x9c\x93')
+        body_frame = frame.Body(1, b'utf8_value=\xe2\x9c\x93')
         method_frame, header_frame, body_value = obj.process(body_frame)
         self.assertEqual(body_value, expectation)
 
@@ -163,21 +163,21 @@ class ContentFrameDispatcherTests(unittest.TestCase):
         obj.process(method_frame)
         header_frame = frame.Header(1, 11, spec.BasicProperties)
         obj.process(header_frame)
-        body_frame = frame.Body(1, 'foo-bar-baz')
+        body_frame = frame.Body(1, b'foo-bar-baz')
         method_frame, header_frame, body_value = obj.process(body_frame)
-        self.assertIsInstance(body_value, str)
+        self.assertIsInstance(body_value, bytes)
 
     def test_ascii_body_value(self):
-        expectation ='foo-bar-baz'
+        expectation = b'foo-bar-baz'
         obj = channel.ContentFrameDispatcher()
         method_frame = frame.Method(1, spec.Basic.Deliver())
         obj.process(method_frame)
         header_frame = frame.Header(1, 11, spec.BasicProperties)
         obj.process(header_frame)
-        body_frame = frame.Body(1, 'foo-bar-baz')
+        body_frame = frame.Body(1, b'foo-bar-baz')
         method_frame, header_frame, body_value = obj.process(body_frame)
         self.assertEqual(body_value, expectation)
-        self.assertIsInstance(body_value, str)
+        self.assertIsInstance(body_value, bytes)
 
     def test_binary_non_unicode_value(self):
         expectation =('a', 0.8)

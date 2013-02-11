@@ -51,7 +51,7 @@ class PikaDispatcher(asyncore.dispatcher):
     def process_timeouts(self):
         """Process the self._timeouts event stack"""
         start_time = time.time()
-        for timeout_id in self._timeouts.keys():
+        for timeout_id in list(self._timeouts.keys()):
             if self._timeouts[timeout_id]['timestamp'] <= start_time:
                 handler = self._timeouts[timeout_id]['handler']
                 del self._timeouts[timeout_id]
