@@ -53,6 +53,9 @@ def encode_value(pieces, value):
     elif isinstance(value, int):
         pieces.append(struct.pack('>cq', b'l', value))
         return 9
+    elif isinstance(value, float):
+        pieces.append(struct.pack('>cd', b'd', value))
+        return 9
     elif isinstance(value, decimal.Decimal):
         value = value.normalize()
         if value._exp < 0:
@@ -147,6 +150,9 @@ def decode_value(encoded, offset):
         offset += 4
     elif kind == b'l':
         value = int(struct.unpack_from('>q', encoded, offset)[0])
+        offset += 8
+    elif kind == b'd':
+        value = float(struct.unpack_from('>d', encoded, offset)[0])
         offset += 8
     elif kind == b'D':
         decimals = struct.unpack_from('B', encoded, offset)[0]
