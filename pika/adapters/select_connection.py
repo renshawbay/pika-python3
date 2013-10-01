@@ -24,21 +24,51 @@ class SelectConnection(BaseConnection):
     event loop adapter for the given platform.
 
     """
+
+    def __init__(self,
+                 parameters=None,
+                 on_open_callback=None,
+                 on_open_error_callback=None,
+                 on_close_callback=None,
+                 stop_ioloop_on_close=True):
+        """Create a new instance of the Connection object.
+
+        :param pika.connection.Parameters parameters: Connection parameters
+        :param method on_open_callback: Method to call on connection open
+        :param on_open_error_callback: Method to call if the connection cant
+                                       be opened
+        :type on_open_error_callback: method
+        :param method on_close_callback: Method to call on connection close
+        :param bool stop_ioloop_on_close: Call ioloop.stop() if disconnected
+        :raises: RuntimeError
+
+        """
+        ioloop = IOLoop(self._manage_event_state)
+        super(SelectConnection, self).__init__(parameters, on_open_callback,
+                                               on_open_error_callback,
+                                               on_close_callback,
+                                               ioloop,
+                                               stop_ioloop_on_close)
+
     def _adapter_connect(self):
-        """Connect to the RabbitMQ broker"""
-        super(SelectConnection, self)._adapter_connect()
-        self.ioloop = IOLoop(self._manage_event_state)
-        self.ioloop.start_poller(self._handle_events,
-                                 self.event_state,
-                                 self.socket.fileno())
-        self._on_connected()
+        """Connect to the RabbitMQ broker, returning True on success, False
+        on failure.
+
+        :rtype: bool
+
+        """
+        if super(SelectConnection, self)._adapter_connect():
+            self.ioloop.start_poller(self._handle_events,
+                                     self.event_state,
+                                     self.socket.fileno())
+            return True
+        return False
 
     def _flush_outbound(self):
         """Call the state manager who will figure out that we need to write then
         call the poller's poll function to force it to process events.
 
         """
-        self.ioloop.poller.process_timeouts()
         self.ioloop.poller._manage_event_state()
         # Force our poller to come up for air, but in write only mode
         # write only mode prevents messages from coming in and kicking off
@@ -65,17 +95,21 @@ class IOLoop(object):
         self.poller = None
         self._manage_event_state = state_manager
 
-    def add_timeout(self, deadline, handler):
-        """Add a timeout with with given deadline, should return a timeout id.
+    def add_timeout(self, deadline, callback_method):
+        """Add the callback_method to the IOLoop timer to fire after deadline
+        seconds. Returns a handle to the timeout. Do not confuse with
+        Tornado's timeout where you pass in the time you want to have your
+        callback called. Only pass in the seconds until it's to be called.
 
-        Pass through a deadline and handler to the active poller.
-
-        :param int deadline: The number of seconds to wait until calling handler
-        :param method handler: The method to call at deadline
-        :rtype: int
+        :param int deadline: The number of seconds to wait to call callback
+        :param method callback_method: The callback method
+        :rtype: str
 
         """
-        return self.poller.add_timeout(deadline, handler)
+        if not self.poller:
+            time.sleep(deadline)
+            return callback_method()
+        return self.poller.add_timeout(deadline, callback_method)
 
     @property
     def poller_type(self):
@@ -171,18 +205,21 @@ class SelectPoller(object):
         self._timeouts = dict()
         self._manage_event_state = state_manager
 
-    def add_timeout(self, deadline, handler):
-        """Add a timeout with with given deadline, should return a timeout id.
+    def add_timeout(self, deadline, callback_method):
+        """Add the callback_method to the IOLoop timer to fire after deadline
+        seconds. Returns a handle to the timeout. Do not confuse with
+        Tornado's timeout where you pass in the time you want to have your
+        callback called. Only pass in the seconds until it's to be called.
 
-        :param int deadline: The number of seconds to wait until calling handler
-        :param method handler: The method to call at deadline
+        :param int deadline: The number of seconds to wait to call callback
+        :param method callback_method: The callback method
         :rtype: str
 
         """
-        value = time.time() + deadline
-        LOGGER.debug('Will call %r on or after %i', handler, value)
-        timeout_id = '%.8f' % value
-        self._timeouts[timeout_id] = {'timestamp': value, 'handler': handler}
+        value = {'deadline': time.time() + deadline,
+                 'callback': callback_method}
+        timeout_id = hash(frozenset(value.items()))
+        self._timeouts[timeout_id] = value
         return timeout_id
 
     def flush_pending_timeouts(self):
@@ -233,12 +270,13 @@ class SelectPoller(object):
     def process_timeouts(self):
         """Process the self._timeouts event stack"""
         start_time = time.time()
-        for timeout_id in list(self._timeouts.keys()):
-            if (timeout_id in self._timeouts and
-                self._timeouts[timeout_id]['timestamp'] <= start_time):
-                handler = self._timeouts[timeout_id]['handler']
+        for timeout_id in self._timeouts.keys():
+            if timeout_id not in self._timeouts:
+                continue
+            if self._timeouts[timeout_id]['deadline'] <= start_time:
+                callback = self._timeouts[timeout_id]['callback']
                 del self._timeouts[timeout_id]
-                handler()
+                callback()
 
     def remove_timeout(self, timeout_id):
         """Remove a timeout if it's still in the timeout stack
@@ -415,7 +453,7 @@ class EPollPoller(PollPoller):
 
     """
     def __init__(self, fileno, handler, events, state_manager):
-        """Create an instance of the KQueuePoller
+        """Create an instance of the EPollPoller
 
         :param int fileno: The file descriptor to check events for
         :param method handler: What is called when an event happens

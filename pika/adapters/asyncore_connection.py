@@ -1,4 +1,7 @@
-"""Use pika with the stdlib asyncore module"""
+"""
+Use Pika with the stdlib :py:mod:`asyncore` module.
+
+"""
 import asyncore
 import logging
 import time
@@ -22,18 +25,22 @@ class PikaDispatcher(asyncore.dispatcher):
         self._event_callback = event_callback
         self.events = self.READ | self.WRITE
 
-    def add_timeout(self, deadline, handler):
-        """Add a timeout with with given deadline, should return a timeout id.
 
-        :param int deadline: The number of seconds to wait until calling handler
-        :param method handler: The method to call at deadline
+    def add_timeout(self, deadline, callback_method):
+        """Add the callback_method to the IOLoop timer to fire after deadline
+        seconds. Returns a handle to the timeout. Do not confuse with
+        Tornado's timeout where you pass in the time you want to have your
+        callback called. Only pass in the seconds until it's to be called.
+
+        :param int deadline: The number of seconds to wait to call callback
+        :param method callback_method: The callback method
         :rtype: str
 
         """
-        value = time.time() + deadline
-        LOGGER.debug('Will call %r on or after %i', handler, value)
-        timeout_id = '%.8f' % value
-        self._timeouts[timeout_id] = {'timestamp': value, 'handler': handler}
+        value = {'deadline': time.time() + deadline,
+                 'callback': callback_method}
+        timeout_id = hash(frozenset(value.items()))
+        self._timeouts[timeout_id] = value
         return timeout_id
 
     def readable(self):
@@ -51,11 +58,11 @@ class PikaDispatcher(asyncore.dispatcher):
     def process_timeouts(self):
         """Process the self._timeouts event stack"""
         start_time = time.time()
-        for timeout_id in list(self._timeouts.keys()):
-            if self._timeouts[timeout_id]['timestamp'] <= start_time:
-                handler = self._timeouts[timeout_id]['handler']
+        for timeout_id in self._timeouts.keys():
+            if self._timeouts[timeout_id]['deadline'] <= start_time:
+                callback = self._timeouts[timeout_id]['callback']
                 del self._timeouts[timeout_id]
-                handler()
+                callback()
 
     def remove_timeout(self, timeout_id):
         """Remove a timeout if it's still in the timeout stack
@@ -85,6 +92,47 @@ class PikaDispatcher(asyncore.dispatcher):
 
 
 class AsyncoreConnection(base_connection.BaseConnection):
+    """The AsyncoreConnection adapter uses the stdlib asyncore module as an
+    IOLoop for asyncronous client development.
+
+    :param pika.connection.Parameters parameters: Connection parameters
+    :param method on_open_callback: Method to call on connection open
+    :param on_open_error_callback: Method to call if the connection cant
+                                   be opened
+    :type on_open_error_callback: method
+    :param method on_close_callback: Method to call on connection close
+    :param bool stop_ioloop_on_close: Call ioloop.stop() if disconnected
+    :raises: RuntimeError
+
+    """
+    def __init__(self,
+                 parameters=None,
+                 on_open_callback=None,
+                 on_open_error_callback=None,
+                 on_close_callback=None,
+                 stop_ioloop_on_close=True):
+        """Create a new instance of the Connection object.
+
+        :param pika.connection.Parameters parameters: Connection parameters
+        :param method on_open_callback: Method to call on connection open
+        :param on_open_error_callback: Method to call if the connection cant
+                                       be opened
+        :type on_open_error_callback: method
+        :param method on_close_callback: Method to call on connection close
+        :param bool stop_ioloop_on_close: Call ioloop.stop() if disconnected
+        :raises: RuntimeError
+
+        """
+        class ConnectingIOLoop(object):
+            def add_timeout(self, duration, callback_method):
+                time.sleep(duration)
+                return callback_method()
+        ioloop = ConnectingIOLoop()
+        super(AsyncoreConnection, self).__init__(parameters, on_open_callback,
+                                                 on_open_error_callback,
+                                                 on_close_callback,
+                                                 ioloop,
+                                                 stop_ioloop_on_close)
 
     def _adapter_connect(self):
         """Connect to our RabbitMQ broker using AsyncoreDispatcher, then setting
@@ -93,7 +141,7 @@ class AsyncoreConnection(base_connection.BaseConnection):
         into our various state methods.
 
         """
-        super(AsyncoreConnection, self)._adapter_connect()
-        self.socket = PikaDispatcher(self.socket, None, self._handle_events)
-        self.ioloop = self.socket
-        self._on_connected()
+        if super(AsyncoreConnection, self)._adapter_connect():
+            self.socket = PikaDispatcher(self.socket, None, self._handle_events)
+            self.ioloop = self.socket
+            self._on_connected()
