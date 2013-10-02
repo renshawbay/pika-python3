@@ -1,10 +1,10 @@
-# Pika, an AMQP 0-9-1 client library for Python
+# Python 3 port of Pika, an AMQP 0-9-1 client library for Python
 
 ## Introduction
 Pika is a pure-Python implementation of the AMQP 0-9-1 protocol that tries
 to stay fairly independent of the underlying network support library.
 
- * Currently supports Python 2.6 and Python 2.7 only. 3.3+ support planned.
+ * Supports Python 3.2+ only.
 
  * Since threads aren't appropriate to every situation, it doesn't
    require threads. It takes care not to forbid them, either. The same
