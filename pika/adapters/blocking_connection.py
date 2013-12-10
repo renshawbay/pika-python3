@@ -507,7 +507,7 @@ class BlockingChannel(channel.Channel):
         if mandatory:
             self._response = None
 
-        if isinstance(body, unicode):
+        if isinstance(body, str):
             body = body.encode('utf-8')
 
         if self._confirmation:
