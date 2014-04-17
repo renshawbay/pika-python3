@@ -14,7 +14,7 @@ if on_rtd:
     requirements.append('tornado')
 
 # Conditional include unittest2 for versions of python < 2.7
-tests_require = ['nose', 'mock', 'pyyaml']
+tests_require = ['nose', 'mock', 'pyyaml', 'tornado', 'twisted' ]
 platform_version = list(platform.python_version_tuple())[0:2]
 if platform_version[0] != '3' and platform_version != ['2', '7']:
     tests_require.append('unittest2')

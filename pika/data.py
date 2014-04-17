@@ -58,8 +58,17 @@ def encode_value(pieces, value):
         return 9
     elif isinstance(value, decimal.Decimal):
         value = value.normalize()
-        if value._exp < 0:
-            decimals = -value._exp
+        def my_exp(value):
+                '''Substitute for missing Decimal._exp property'''
+                total_len = len(str(value))
+                integral_len = len(str(value.to_integral_value(rounding=decimal.ROUND_FLOOR)))
+                if(total_len == integral_len):
+                    return 0
+                else:
+                    return int(-1*(total_len - integral_len -1))
+        value_exp = my_exp(value)
+        if value_exp < 0:
+            decimals = -value_exp
             raw = int(value * (decimal.Decimal(10) ** decimals))
             pieces.append(struct.pack('>cBi', b'D', decimals, raw))
         else:

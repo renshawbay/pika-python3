@@ -20,6 +20,7 @@ class AMQPObjectTests(unittest.TestCase):
         obj = amqp_object.AMQPObject()
         self.assertEqual(repr(obj), '<AMQPObject>')
 
+    @unittest.skip("Test relies on undefined sort order")
     def test_repr_items(self):
         obj = amqp_object.AMQPObject()
         setattr(obj, 'foo', 'bar')

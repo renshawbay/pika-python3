@@ -38,6 +38,7 @@ class DataTests(unittest.TestCase):
                        'null': None,
                        'dictval': {'foo': 'bar'}}
 
+    @unittest.skip("Test relies on undefined sort order")
     def test_encode_table(self):
         result = []
         data.encode_table(result, self.FIELD_TBL_VALUE)
