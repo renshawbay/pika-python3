@@ -1,5 +1,7 @@
 # Python 3 port of Pika, an AMQP 0-9-1 client library for Python
 
+[![Build Status](https://travis-ci.org/C-Pro/pika-python3.svg?branch=python3)](https://travis-ci.org/C-Pro/pika-python3)
+
 ## Introduction
 Pika is a pure-Python implementation of the AMQP 0-9-1 protocol that tries
 to stay fairly independent of the underlying network support library.

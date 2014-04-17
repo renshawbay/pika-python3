@@ -12,10 +12,9 @@ on_rtd = os.environ.get('READTHEDOCS', None) == 'True'
 requirements = list()
 if on_rtd:
     requirements.append('tornado')
-    requirements.append('twisted')
 
 # Conditional include unittest2 for versions of python < 2.7
-tests_require = ['nose', 'mock', 'pyyaml']
+tests_require = ['nose', 'mock', 'pyyaml', 'tornado', 'twisted' ]
 platform_version = list(platform.python_version_tuple())[0:2]
 if platform_version[0] != '3' and platform_version != ['2', '7']:
     tests_require.append('unittest2')
@@ -30,6 +29,8 @@ setup(name='pika',
       version='0.9.13',
       description='Pika Python AMQP Client Library',
       long_description=long_description,
+      author='Tony Garnock-Jones',
+      author_email='tonygarnockjones@gmail.com',
       maintainer='Gavin M. Roy',
       maintainer_email='gavinmroy@gmail.com',
       url='https://pika.readthedocs.org ',
