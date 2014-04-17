@@ -28,12 +28,13 @@ class Channel(object):
     OPEN = 2
     CLOSING = 3
 
-    def __init__(self, connection, channel_number, on_open_callback=None):
+    def __init__(self, connection, channel_number, on_open_callback=None, force_binary=False):
         """Create a new instance of the Channel
 
         :param pika.connection.Connection connection: The connection
         :param int channel_number: The channel number for this instance
         :param method on_open_callback: The method to call on channel open
+        :param bool force_binary: Prevents channel from autodetecting unicode
 
         """
         if not isinstance(channel_number, int):
@@ -43,7 +44,7 @@ class Channel(object):
         self.connection = connection
 
         # The frame-handler changes depending on the type of frame processed
-        self.frame_dispatcher = ContentFrameDispatcher()
+        self.frame_dispatcher = ContentFrameDispatcher(force_binary)
 
         self._blocked = collections.deque(list())
         self._blocking = None
@@ -54,9 +55,15 @@ class Channel(object):
         self._on_getok_callback = None
         self._on_openok_callback = on_open_callback
         self._pending = dict()
-        self._reply_code = None
-        self._reply_text = None
         self._state = self.CLOSED
+
+    def __int__(self):
+        """Return the channel object as its channel number
+
+        :rtype: int
+
+        """
+        return self.channel_number
 
     def add_callback(self, callback, replies, one_shot=True):
         """Pass in a callback handler and a list replies from the
@@ -84,13 +91,15 @@ class Channel(object):
 
     def add_on_close_callback(self, callback):
         """Pass a callback function that will be called when the channel is
-        closed. The callback function should receive a frame parameter.
+        closed. The callback function will receive the channel, the
+        reply_code (int) and the reply_text (int) sent by the server describing
+        why the channel was closed.
 
         :param method callback: The method to call on callback
 
         """
-        self.callbacks.add(self.channel_number, spec.Channel.Close, callback,
-                           False)
+        self.callbacks.add(self.channel_number, '_on_channel_close', callback,
+                           False, self)
 
     def add_on_flow_callback(self, callback):
         """Pass a callback function that will be called when Channel.Flow is
@@ -280,6 +289,8 @@ class Channel(object):
             raise exceptions.ChannelClosed()
         if immediate:
             LOGGER.warning('The immediate flag is deprecated in RabbitMQ')
+        if isinstance(body, str):
+            body = body.encode('utf-8')
         properties = properties or spec.BasicProperties()
         self._send_method(spec.Basic.Publish(exchange=exchange,
                                              routing_key=routing_key,
@@ -364,13 +375,14 @@ class Channel(object):
         """
         if not self.is_open:
             raise exceptions.ChannelClosed()
-        LOGGER.info('Channel.close(%s, %s)', self._reply_code, self._reply_text)
+        LOGGER.info('Channel.close(%s, %s)', reply_code, reply_text)
+        if self._consumers:
+            LOGGER.debug('Cancelling %i consumers', len(self._consumers))
+            for consumer_tag in self._consumers.keys():
+                self.basic_cancel(consumer_tag=consumer_tag)
         self._set_state(self.CLOSING)
-        self._reply_code, self._reply_text = reply_code, reply_text
-        LOGGER.debug('Cancelling %i consumers', len(self._consumers))
-        for consumer_tag in list(self._consumers.keys()):
-            self.basic_cancel(consumer_tag)
-        self._shutdown()
+        self._rpc(spec.Channel.Close(reply_code, reply_text, 0, 0),
+                  self._on_closeok, [spec.Channel.CloseOk])
 
     def confirm_delivery(self, callback=None, nowait=False):
         """Turn on Confirm mode in the channel. Pass in a callback to be
@@ -582,7 +594,7 @@ class Channel(object):
         """
         self._validate_channel_and_callback(callback)
         replies = [spec.Queue.BindOk] if nowait is False else []
-        if not routing_key:
+        if routing_key is None:
             routing_key = queue
         return self._rpc(spec.Queue.Bind(0, queue, exchange, routing_key,
                                          nowait, arguments or dict()), callback,
@@ -651,7 +663,7 @@ class Channel(object):
                          replies)
 
     def queue_unbind(self, callback=None, queue='', exchange=None,
-                     routing_key='', arguments=None):
+                     routing_key=None, arguments=None):
         """Unbind a queue from an exchange.
 
         :param method callback: The method to call on Queue.UnbindOk
@@ -665,6 +677,8 @@ class Channel(object):
 
         """
         self._validate_channel_and_callback(callback)
+        if routing_key is None:
+            routing_key = queue
         return self._rpc(spec.Queue.Unbind(0, queue, exchange, routing_key,
                                            arguments or dict()), callback,
                          [spec.Queue.UnbindOk])
@@ -727,7 +741,7 @@ class Channel(object):
         self.callbacks.add(self.channel_number,
                            spec.Channel.Close,
                            self._on_close,
-                           False)
+                           True)
 
     def _add_pending_msg(self, consumer_tag, method_frame,  header_frame, body):
         """Add the received message to the pending message stack.
@@ -743,7 +757,8 @@ class Channel(object):
                                             header_frame.properties, body))
 
     def _cleanup(self):
-        """Remove any callbacks for the channel."""
+        """Remove all consumers and any callbacks for the channel."""
+        self._consumers = dict()
         self.callbacks.cleanup(str(self.channel_number))
 
     def _get_pending_msg(self, consumer_tag):
@@ -809,8 +824,6 @@ class Channel(object):
             del self._consumers[method_frame.method.consumer_tag]
         if method_frame.method.consumer_tag in self._pending:
             del self._pending[method_frame.method.consumer_tag]
-        if self.is_closing and not len(self._consumers):
-            self._shutdown()
 
     def _on_close(self, method_frame):
         """Handle the case where our channel has been closed for us
@@ -818,11 +831,33 @@ class Channel(object):
         :param pika.frame.Method method_frame: The close frame
 
         """
+        LOGGER.info('%s', method_frame)
         LOGGER.warning('Received remote Channel.Close (%s): %s',
                        method_frame.method.reply_code,
                        method_frame.method.reply_text)
-        self._send_method(spec.Channel.CloseOk())
+        if self.connection.is_open:
+            self._send_method(spec.Channel.CloseOk())
         self._set_state(self.CLOSED)
+        self.callbacks.process(self.channel_number,
+                               '_on_channel_close',
+                               self, self,
+                               method_frame.method.reply_code,
+                               method_frame.method.reply_text)
+        self._cleanup()
+
+    def _on_closeok(self, method_frame):
+        """Invoked when RabbitMQ replies to a Channel.Close method
+
+        :param pika.frame.Method method_frame: The CloseOk frame
+
+        """
+        LOGGER.warning('Received %s', method_frame.method)
+        self._set_state(self.CLOSED)
+        self.callbacks.process(self.channel_number,
+                               '_on_channel_close',
+                               self, self,
+                               0, '')
+        self._cleanup()
 
     def _on_deliver(self, method_frame, header_frame, body):
         """Cope with reentrancy. If a particular consumer is still active when
@@ -931,8 +966,9 @@ class Channel(object):
         :type body: str or unicode
 
         """
-        if not self.callbacks.process(self.channel_number, '_on_return',
-                                      (self, method_frame.method,
+        if not self.callbacks.process(self.channel_number, '_on_return', self,
+                                      (self,
+                                       method_frame.method,
                                        header_frame.properties,
                                        body)):
             LOGGER.warning('Basic.Return received from server (%r, %r)',
@@ -1027,16 +1063,12 @@ class Channel(object):
         """
         self._state = connection_state
 
-    def _shutdown(self):
-        """Called when close() is invoked either directly or when all of the
-        consumers have been cancelled.
+    def _unexpected_frame(self, frame_value):
+        """Invoked when a frame is received that is not setup to be processed.
+
+        :param pika.frame.Frame frame_value: The frame received
 
         """
-        self._set_state(self.CLOSING)
-        self._send_method(spec.Channel.Close(self._reply_code,
-                                             self._reply_text, 0, 0))
-
-    def _unexpected_frame(self, frame_value):
         LOGGER.warning('Unexpected frame: %r', frame_value)
 
     def _validate_channel_and_callback(self, callback):
@@ -1052,7 +1084,7 @@ class ContentFrameDispatcher(object):
     back in three parts upon receipt.
 
     """
-    def __init__(self):
+    def __init__(self, force_binary):
         """Create a new instance of the Dispatcher passing in the callback
         manager.
 
@@ -1061,6 +1093,7 @@ class ContentFrameDispatcher(object):
         self._header_frame = None
         self._seen_so_far = 0
         self._body_fragments = list()
+        self.force_binary = force_binary
 
     def process(self, frame_value):
         """Invoked by the Channel object when passed frames that are not
@@ -1075,6 +1108,8 @@ class ContentFrameDispatcher(object):
             self._method_frame = frame_value
         elif isinstance(frame_value, frame.Header):
             self._header_frame = frame_value
+            if frame_value.body_size == 0:
+                return self._finish()
         elif isinstance(frame_value, frame.Body):
             return self._handle_body_frame(frame_value)
         else:
@@ -1088,10 +1123,6 @@ class ContentFrameDispatcher(object):
         """
         
         value = b''.join(self._body_fragments)
-        # try:
-        #     value = value.decode('utf-8')
-        # except UnicodeDecodeError:
-        #     pass  # return bytes
         content = (self._method_frame,
                    self._header_frame,
                    value)

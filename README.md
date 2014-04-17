@@ -1,10 +1,12 @@
-# Pika, an AMQP 0-9-1 client library for Python
+# Python 3 port of Pika, an AMQP 0-9-1 client library for Python
 
 [![Build Status](https://travis-ci.org/C-Pro/pika-python3.svg?branch=python3)](https://travis-ci.org/C-Pro/pika-python3)
 
 ## Introduction
 Pika is a pure-Python implementation of the AMQP 0-9-1 protocol that tries
 to stay fairly independent of the underlying network support library.
+
+ * Supports Python 3.2+ only.
 
  * Since threads aren't appropriate to every situation, it doesn't
    require threads. It takes care not to forbid them, either. The same
@@ -56,6 +58,7 @@ And an example of writing a blocking consumer:
  * BlockingConnection - enables blocking, synchronous operation on top of
                         library for simple uses
  * SelectConnection   - fast asynchronous adapter
+ * TwistedConnection  - adapter for use with the Twisted asynchronous package http://twistedmatrix.com/
  * TornadoConnection  - adapter for use with the Tornado IO Loop http://tornadoweb.org
 
 ## License

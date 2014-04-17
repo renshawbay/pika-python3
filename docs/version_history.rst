@@ -1,6 +1,119 @@
 Version History
 ===============
 
+0.9.13 - 2013-05-15
+-------------------
+**Major Changes**
+
+- IPv6 Support with thanks to Alessandro Tagliapietra for initial prototype
+- Officially remove support for <= Python 2.5 even though it was broken already
+- Drop pika.simplebuffer.SimpleBuffer in favor of the Python stdlib collections.deque object
+- New default object for receiving content is a "bytes" object which is a str wrapper in Python 2, but paves way for Python 3 support
+- New "Raw" mode for frame decoding content frames (#334) addresses issues #331, #229 added by Garth Williamson
+- Connection and Disconnection logic refactored, allowing for cleaner separation of protocol logic and socket handling logic as well as connection state management
+- New "on_open_error_callback" argument in creating connection objects and new Connection.add_on_open_error_callback method
+- New Connection.connect method to cleanly allow for reconnection code
+- Support for all AMQP field types, using protocol specified signed/unsigned unpacking
+
+**Backwards Incompatible Changes**
+
+- Method signature for creating connection objects has new argument "on_open_error_callback" which is positionally before "on_close_callback"
+- Internal callback variable names in connection.Connection have been renamed and constants used. If you relied on any of these callbacks outside of their internal use, make sure to check out the new constants.
+- Connection._connect method, which was an internal only method is now deprecated and will raise a DeprecationWarning. If you relied on this method, your code needs to change.
+- pika.simplebuffer has been removed
+
+**Bugfixes**
+
+- BlockingConnection consumer generator does not free buffer when exited (#328)
+- Unicode body payloads in the blocking adapter raises exception (#333)
+- Support "b" short-short-int AMQP data type (#318)
+- Docstring type fix in adapters/select_connection (#316) fix by Rikard Hultén
+- IPv6 not supported (#309)
+- Stop the HeartbeatChecker when connection is closed (#307)
+- Unittest fix for SelectConnection (#336) fix by Erik Andersson
+- Handle condition where no connection or socket exists but SelectConnection needs a timeout for retrying a connection (#322)
+- TwistedAdapter lagging behind BaseConnection changes (#321) fix by Jan Urbański
+
+**Other**
+
+- Refactored documentation
+- Added Twisted Adapter example (#314) by nolinksoft
+
+0.9.12 - 2013-03-18
+-------------------
+
+**Bugfixes**
+
+- New timeout id hashing was not unique
+
+0.9.11 - 2013-03-17
+-------------------
+
+**Bugfixes**
+
+- Address inconsistent channel close callback documentation and add the signature
+  change to the TwistedChannel class (#305)
+- Address a missed timeout related internal data structure name change
+  introduced in the SelectConnection 0.9.10 release. Update all connection
+  adapters to use same signature and docstring (#306).
+
+0.9.10 - 2013-03-16
+-------------------
+
+**Bugfixes**
+
+- Fix timeout in twisted adapter (Submitted by cellscape)
+- Fix blocking_connection poll timer resolution to milliseconds (Submitted by cellscape)
+- Fix channel._on_close() without a method frame (Submitted by Richard Boulton)
+- Addressed exception on close (Issue #279 - fix by patcpsc)
+- 'messages' not initialized in BlockingConnection.cancel() (Issue #289 - fix by Mik Kocikowski)
+- Make queue_unbind behave like queue_bind (Issue #277)
+- Address closing behavioral issues for connections and channels (Issue #275)
+- Pass a Method frame to Channel._on_close in Connection._on_disconnect (Submitted by Jan Urbański)
+- Fix channel closed callback signature in the Twisted adapter (Submitted by Jan Urbański)
+- Don't stop the IOLoop on connection close for in the Twisted adapter (Submitted by Jan Urbański)
+- Update the asynchronous examples to fix reconnecting and have it work
+- Warn if the socket was closed such as if RabbitMQ dies without a Close frame
+- Fix URLParameters ssl_options (Issue #296)
+- Add state to BlockingConnection addressing (Issue #301)
+- Encode unicode body content prior to publishing (Issue #282)
+- Fix an issue with unicode keys in BasicProperties headers key (Issue #280)
+- Change how timeout ids are generated (Issue #254)
+- Address post close state issues in Channel (Issue #302)
+
+** Behavior changes **
+
+- Change core connection communication behavior to prefer outbound writes over reads, addressing a recursion issue
+- Update connection on close callbacks, changing callback method signature
+- Update channel on close callbacks, changing callback method signature
+- Give more info in the ChannelClosed exception
+- Change the constructor signature for BlockingConnection, block open/close callbacks
+- Disable the use of add_on_open_callback/add_on_close_callback methods in BlockingConnection
+
+
+0.9.9 - 2013-01-29
+------------------
+
+**Bugfixes**
+
+- Only remove the tornado_connection.TornadoConnection file descriptor from the IOLoop if it's still open (Issue #221)
+- Allow messages with no body (Issue #227)
+- Allow for empty routing keys (Issue #224)
+- Don't raise an exception when trying to send a frame to a closed connection (Issue #229)
+- Only send a Connection.CloseOk if the connection is still open. (Issue #236 - Fix by noleaf)
+- Fix timeout threshold in blocking connection - (Issue #232 - Fix by Adam Flynn)
+- Fix closing connection while a channel is still open (Issue #230 - Fix by Adam Flynn)
+- Fixed misleading warning and exception messages in BaseConnection (Issue #237 - Fix by Tristan Penman)
+- Pluralised and altered the wording of the AMQPConnectionError exception (Issue #237 - Fix by Tristan Penman)
+- Fixed _adapter_disconnect in TornadoConnection class (Issue #237 - Fix by Tristan Penman)
+- Fixing hang when closing connection without any channel in BlockingConnection (Issue #244 - Fix by Ales Teska)
+- Remove the process_timeouts() call in SelectConnection (Issue #239)
+- Change the string validation to basestring for host connection parameters (Issue #231)
+- Add a poller to the BlockingConnection to address latency issues introduced in Pika 0.9.8 (Issue #242)
+- reply_code and reply_text is not set in ChannelException (Issue #250)
+- Add the missing constraint parameter for Channel._on_return callback processing (Issue #257 - Fix by patcpsc)
+- Channel callbacks not being removed from callback manager when channel is closed or deleted (Issue #261)
+
 0.9.8 - 2012-11-18
 ------------------
 

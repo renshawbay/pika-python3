@@ -40,7 +40,7 @@ def encode_value(pieces, value):
 
     """
     if isinstance(value, str):
-        value = value.encode('utf8')
+        value = value.encode('utf-8')
         pieces.append(struct.pack('>cI', b'S', len(value)))
         pieces.append(value)
         return 5 + len(value)
@@ -123,15 +123,71 @@ def decode_value(encoded, offset):
     """
     kind = bytes([encoded[offset]])
     offset += 1
-    if kind == b'S':
-        length = struct.unpack_from('>I', encoded, offset)[0]
+    # Bool
+    if kind == b't':
+        value = struct.unpack_from('>B', encoded, offset)[0]
+        value = bool(value)
+        offset += 1
+
+    # Short-Short Int
+    elif kind == b'b':
+        value = struct.unpack_from('>B', encoded, offset)[0]
+        offset += 1
+
+    # Short-Short Unsigned Int
+    elif kind == b'B':
+        value = struct.unpack_from('>b', encoded, offset)[0]
+        offset += 1
+
+    # Short Int
+    elif kind == b'U':
+        value = struct.unpack_from('>h', encoded, offset)[0]
+        offset += 2
+
+    # Short Unsigned Int
+    elif kind == b'u':
+        value = struct.unpack_from('>H', encoded, offset)[0]
+        offset += 2
+
+    # Long Int
+    elif kind == b'I':
+        value = struct.unpack_from('>i', encoded, offset)[0]
         offset += 4
-        value = encoded[offset: offset + length].decode('utf8')
-        try:
-            value = str(value)
-        except UnicodeEncodeError:
-            pass
-        offset += length
+
+    # Long Unsigned Int
+    elif kind == b'i':
+        value = struct.unpack_from('>I', encoded, offset)[0]
+        offset += 4
+
+    # Long-Long Int
+    elif kind == b'L':
+        value = int(struct.unpack_from('>q', encoded, offset)[0])
+        offset += 8
+
+    # Long-Long Unsigned Int
+    elif kind == b'l':
+        value = int(struct.unpack_from('>Q', encoded, offset)[0])
+        offset += 8
+
+    # Float
+    elif kind == b'f':
+        value = int(struct.unpack_from('>f', encoded, offset)[0])
+        offset += 4
+
+    # Double
+    elif kind == b'd':
+        value = int(struct.unpack_from('>d', encoded, offset)[0])
+        offset += 8
+
+    # Decimal
+    elif kind == b'D':
+        decimals = struct.unpack_from('B', encoded, offset)[0]
+        offset += 1
+        raw = struct.unpack_from('>i', encoded, offset)[0]
+        offset += 4
+        value = decimal.Decimal(raw) * (decimal.Decimal(10) ** -decimals)
+
+    # Short String
     elif kind == b's':
         length = struct.unpack_from('B', encoded, offset)[0]
         offset += 1
@@ -141,31 +197,19 @@ def decode_value(encoded, offset):
         except UnicodeEncodeError:
             pass
         offset += length
-    elif kind == b't':
-        value = struct.unpack_from('>B', encoded, offset)[0]
-        value = bool(value)
-        offset += 1
-    elif kind == b'I':
-        value = struct.unpack_from('>i', encoded, offset)[0]
+
+    # Long String
+    elif kind == b'S':
+        length = struct.unpack_from('>I', encoded, offset)[0]
         offset += 4
-    elif kind == b'l':
-        value = int(struct.unpack_from('>q', encoded, offset)[0])
-        offset += 8
-    elif kind == b'd':
-        value = float(struct.unpack_from('>d', encoded, offset)[0])
-        offset += 8
-    elif kind == b'D':
-        decimals = struct.unpack_from('B', encoded, offset)[0]
-        offset += 1
-        raw = struct.unpack_from('>i', encoded, offset)[0]
-        offset += 4
-        value = decimal.Decimal(raw) * (decimal.Decimal(10) ** -decimals)
-    elif kind == b'T':
-        value = datetime.utcfromtimestamp(struct.unpack_from('>Q', encoded,
-                                                             offset)[0])
-        offset += 8
-    elif kind == b'F':
-        (value, offset) = decode_table(encoded, offset)
+        value = encoded[offset: offset + length].decode('utf8')
+        try:
+            value = str(value)
+        except UnicodeEncodeError:
+            pass
+        offset += length
+
+    # Field Array
     elif kind == b'A':
         length = struct.unpack_from('>I', encoded, offset)[0]
         offset += 4
@@ -174,8 +218,21 @@ def decode_value(encoded, offset):
         while offset < offset_end:
             v, offset = decode_value(encoded, offset)
             value.append(v)
+
+    # Timestamp
+    elif kind == b'T':
+        value = datetime.utcfromtimestamp(struct.unpack_from('>Q', encoded,
+                                                             offset)[0])
+        offset += 8
+
+    # Field Table
+    elif kind == b'F':
+        (value, offset) = decode_table(encoded, offset)
+
+    # Null / Void
     elif kind == b'V':
         value = None
     else:
         raise exceptions.InvalidFieldTypeException(kind)
+
     return value, offset

@@ -87,12 +87,6 @@ class ChannelTests(unittest.TestCase):
     def test_init_on_flowok_callback(self):
         self.assertEqual(self.obj._on_flowok_callback, None)
 
-    def test_init_reply_code(self):
-        self.assertEqual(self.obj._reply_code, None)
-
-    def test_init_reply_text(self):
-        self.assertEqual(self.obj._reply_text, None)
-
     def test_add_callback(self):
         mock_callback = mock.Mock()
         self.obj.add_callback(mock_callback, [spec.Basic.Qos])
@@ -122,9 +116,10 @@ class ChannelTests(unittest.TestCase):
         mock_callback = mock.Mock()
         self.obj.add_on_close_callback(mock_callback)
         self.connection.callbacks.add.assert_called_once_with(self.obj.channel_number,
-                                                              spec.Channel.Close,
+                                                              '_on_channel_close',
                                                               mock_callback,
-                                                              False)
+                                                              False,
+                                                              self.obj)
 
     def test_add_on_flow_callback(self):
         mock_callback = mock.Mock()
@@ -197,6 +192,18 @@ class ChannelTests(unittest.TestCase):
         self.obj._consumers[consumer_tag] = callback_mock
         self.assertRaises(ValueError, self.obj.basic_cancel, callback_mock,
                           consumer_tag, nowait=True)
+
+    def test_basic_cancel_then_close(self):
+        self.obj._set_state(self.obj.OPEN)
+        callback_mock = mock.Mock()
+        consumer_tag = 'ctag0'
+        self.obj._consumers[consumer_tag] = mock.Mock()
+        self.obj.basic_cancel(callback_mock, consumer_tag)
+        try:
+            self.obj.close()
+        except exceptions.ChannelClosed:
+            self.fail('unable to cancel consumers as channel is closing')
+        self.assertTrue(self.obj.is_closing)
 
     def test_basic_cancel_on_cancel_appended(self):
         self.obj._set_state(self.obj.OPEN)
@@ -350,7 +357,7 @@ class ChannelTests(unittest.TestCase):
         self.obj._set_state(self.obj.OPEN)
         exchange = 'basic_publish_test'
         routing_key = 'routing-key-fun'
-        body = 'This is my body'
+        body = b'This is my body'
         properties = spec.BasicProperties(content_type='text/plain')
         mandatory = False
         immediate = False
@@ -408,25 +415,12 @@ class ChannelTests(unittest.TestCase):
         self.obj.close()
         self.assertEqual(self.obj._state, channel.Channel.CLOSING)
 
-    def test_close_reply_info(self):
-        reply_code, reply_text = (999, 'Test Reply')
-        self.obj._set_state(self.obj.OPEN)
-        self.obj.close(reply_code, reply_text)
-        self.assertEqual((self.obj._reply_code, self.obj._reply_text),
-                         (reply_code, reply_text))
-
     def test_close_basic_cancel_called(self):
         self.obj._set_state(self.obj.OPEN)
         self.obj._consumers['abc'] = None
         with mock.patch.object(self.obj, 'basic_cancel') as basic_cancel:
             self.obj.close()
-            basic_cancel.assert_called_once_with('abc')
-
-    def test_close_calls_shutdown(self):
-        self.obj._set_state(self.obj.OPEN)
-        with mock.patch.object(self.obj, '_shutdown') as shutdown:
-            self.obj.close()
-            shutdown.assert_called_once_with()
+            basic_cancel.assert_called_once_with(consumer_tag='abc')
 
     def test_confirm_delivery_raises_channel_closed(self):
         self.assertRaises(exceptions.ChannelClosed, self.obj.confirm_delivery)
@@ -1014,15 +1008,6 @@ class ChannelTests(unittest.TestCase):
         self.obj._on_cancelok(frame_value)
         self.assertNotIn(consumer_tag, self.obj._pending)
 
-    def test_on_cancelok_called_shutdown(self):
-        consumer_tag = 'ctag0'
-        self.obj._pending[consumer_tag] = logging.debug
-        frame_value = frame.Method(1, spec.Basic.CancelOk(consumer_tag))
-        self.obj._set_state(self.obj.CLOSING)
-        with mock.patch.object(self.obj, '_shutdown') as shutdown:
-            self.obj._on_cancelok(frame_value)
-            shutdown.assert_called_once_with()
-
     @mock.patch('logging.Logger.debug')
     def test_on_deliver(self, debug):
         consumer_tag = 'ctag0'
@@ -1207,6 +1192,7 @@ class ChannelTests(unittest.TestCase):
         self.obj._on_return(method_value, header_value, body_value)
         self.obj.callbacks.process.assert_called_with(self.obj.channel_number,
                                                       '_on_return',
+                                                      self.obj,
                                                       (self.obj,
                                                        method_value.method,
                                                        header_value.properties,
@@ -1289,20 +1275,6 @@ class ChannelTests(unittest.TestCase):
         self.obj._state = channel.Channel.CLOSED
         self.obj._set_state(channel.Channel.OPENING)
         self.assertEqual(self.obj._state, channel.Channel.OPENING)
-
-    @mock.patch('pika.spec.Channel.Close')
-    @mock.patch('pika.channel.Channel._send_method')
-    def test_shutdown_send_method_called(self, send_method, unused):
-        self.obj._set_state(self.obj.OPEN)
-        self.obj._shutdown()
-        expectation = spec.Channel.Close(self.obj._reply_code,
-                                         self.obj._reply_text,
-                                         0, 0)
-        send_method.assert_called_once_with(expectation)
-
-    def test_shutdown_state(self):
-        self.obj._shutdown()
-        self.assertEqual(self.obj._state, channel.Channel.CLOSING)
 
     def test_validate_channel_and_callback_raises_channel_closed(self):
         self.assertRaises(exceptions.ChannelClosed,

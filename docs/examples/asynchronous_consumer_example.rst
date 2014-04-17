@@ -39,6 +39,7 @@ consumer.py::
             """
             self._connection = None
             self._channel = None
+            self._closing = False
             self._consumer_tag = None
             self._url = amqp_url
 
@@ -52,7 +53,8 @@ consumer.py::
             """
             LOGGER.info('Connecting to %s', self._url)
             return pika.SelectConnection(pika.URLParameters(self._url),
-                                         self.on_connection_open)
+                                         self.on_connection_open,
+                                         stop_ioloop_on_close=False)
 
         def close_connection(self):
             """This method closes the connection to RabbitMQ."""
@@ -67,19 +69,23 @@ consumer.py::
             LOGGER.info('Adding connection close callback')
             self._connection.add_on_close_callback(self.on_connection_closed)
 
-        def on_connection_closed(self, method_frame):
+        def on_connection_closed(self, connection, reply_code, reply_text):
             """This method is invoked by pika when the connection to RabbitMQ is
             closed unexpectedly. Since it is unexpected, we will reconnect to
             RabbitMQ if it disconnects.
 
-            :param pika.frame.Method method_frame: The method frame from RabbitMQ
+            :param pika.connection.Connection connection: The closed connection obj
+            :param int reply_code: The server provided reply_code if given
+            :param str reply_text: The server provided reply_text if given
 
             """
-            LOGGER.warning('Server closed connection, reopening: (%s) %s',
-                           method_frame.method.reply_code,
-                           method_frame.method.reply_text)
             self._channel = None
-            self._connection = self.connect()
+            if self._closing:
+                self._connection.ioloop.stop()
+            else:
+                LOGGER.warning('Connection closed, reopening in 5 seconds: (%s) %s',
+                               reply_code, reply_text)
+                self._connection.add_timeout(5, self.reconnect)
 
         def on_connection_open(self, unused_connection):
             """This method is called by pika once the connection to RabbitMQ has
@@ -93,6 +99,22 @@ consumer.py::
             self.add_on_connection_close_callback()
             self.open_channel()
 
+        def reconnect(self):
+            """Will be invoked by the IOLoop timer if the connection is
+            closed. See the on_connection_closed method.
+
+            """
+            # This is the old connection IOLoop instance, stop its ioloop
+            self._connection.ioloop.stop()
+
+            if not self._closing:
+
+                # Create a new connection
+                self._connection = self.connect()
+
+                # There is now a new connection, needs a new ioloop to run
+                self._connection.ioloop.start()
+
         def add_on_channel_close_callback(self):
             """This method tells pika to call the on_channel_closed method if
             RabbitMQ unexpectedly closes the channel.
@@ -101,19 +123,20 @@ consumer.py::
             LOGGER.info('Adding channel close callback')
             self._channel.add_on_close_callback(self.on_channel_closed)
 
-        def on_channel_closed(self, method_frame):
+        def on_channel_closed(self, channel, reply_code, reply_text):
             """Invoked by pika when RabbitMQ unexpectedly closes the channel.
             Channels are usually closed if you attempt to do something that
-            violates the protocol, such as redeclare an exchange or queue with
-            different paramters. In this case, we'll close the connection
+            violates the protocol, such as re-declare an exchange or queue with
+            different parameters. In this case, we'll close the connection
             to shutdown the object.
 
-            :param pika.frame.Method method_frame: The Channel.Close method frame
+            :param pika.channel.Channel: The closed channel
+            :param int reply_code: The numeric reason the channel was closed
+            :param str reply_text: The text reason the channel was closed
 
             """
-            LOGGER.warning('Channel was closed: (%s) %s',
-                           method_frame.method.reply_code,
-                           method_frame.method.reply_text)
+            LOGGER.warning('Channel %i was closed: (%s) %s',
+                           channel, reply_code, reply_text)
             self._connection.close()
 
         def on_channel_open(self, channel):
@@ -197,7 +220,8 @@ consumer.py::
             """
             LOGGER.info('Consumer was cancelled remotely, shutting down: %r',
                         method_frame)
-            self._channel.close()
+            if self._channel:
+                self._channel.close()
 
         def acknowledge_message(self, delivery_tag):
             """Acknowledge the message delivery from RabbitMQ by sending a
@@ -229,22 +253,24 @@ consumer.py::
 
         def on_cancelok(self, unused_frame):
             """This method is invoked by pika when RabbitMQ acknowledges the
-            cancellation of a consumer. At this point we will close the connection
-            which will automatically close the channel if it's open.
+            cancellation of a consumer. At this point we will close the channel.
+            This will invoke the on_channel_closed method once the channel has been
+            closed, which will in-turn close the connection.
 
             :param pika.frame.Method unused_frame: The Basic.CancelOk frame
 
             """
             LOGGER.info('RabbitMQ acknowledged the cancellation of the consumer')
-            self.close_connection()
+            self.close_channel()
 
         def stop_consuming(self):
             """Tell RabbitMQ that you would like to stop consuming by sending the
             Basic.Cancel RPC command.
 
             """
-            LOGGER.info('Sending a Basic.Cancel RPC command to RabbitMQ')
-            self._channel.basic_cancel(self.on_cancelok, self._consumer_tag)
+            if self._channel:
+                LOGGER.info('Sending a Basic.Cancel RPC command to RabbitMQ')
+                self._channel.basic_cancel(self.on_cancelok, self._consumer_tag)
 
         def start_consuming(self):
             """This method sets up the consumer by first calling
@@ -309,8 +335,10 @@ consumer.py::
 
             """
             LOGGER.info('Stopping')
+            self._closing = True
             self.stop_consuming()
             self._connection.ioloop.start()
+            LOGGER.info('Stopped')
 
 
     def main():
@@ -324,3 +352,4 @@ consumer.py::
 
     if __name__ == '__main__':
         main()
+
