@@ -539,6 +539,8 @@ class Connection(object):
     ON_CONNECTION_CLOSED = '_on_connection_closed'
     ON_CONNECTION_ERROR = '_on_connection_error'
     ON_CONNECTION_OPEN = '_on_connection_open'
+    ON_CONNECTION_BLOCKED = '_on_connection_blocked'
+    ON_CONNECTION_UNBLOCKED = '_on_connection_unblocked'
     CONNECTION_CLOSED = 0
     CONNECTION_INIT = 1
     CONNECTION_PROTOCOL = 2
@@ -631,6 +633,25 @@ class Connection(object):
             self.callbacks.remove(0, self.ON_CONNECTION_ERROR,
                                   self._on_connection_error)
         self.callbacks.add(0, self.ON_CONNECTION_ERROR, callback_method, False)
+
+    def add_on_blocked_callback(self, callback_method):
+        """Add a callback notification when the connection has been blocked.
+        The callback will be passed the connection and reason received
+        from server
+
+        :param method callback_method: Callback to call on blocked
+
+        """
+        self.callbacks.add(0, self.ON_CONNECTION_BLOCKED, callback_method, False)
+
+    def add_on_unblocked_callback(self, callback_method):
+        """Add a callback notification when the connection has been unblocked.
+        The callback shold accept the connection object
+
+        :param method callback_method: Callback to call on unblocked
+
+        """
+        self.callbacks.add(0, self.ON_CONNECTION_UNBLOCKED, callback_method, False)
 
     def add_timeout(self, deadline, callback_method):
         """Adapters should override to call the callback after the
@@ -838,6 +859,14 @@ class Connection(object):
         """Add a callback for when a Connection.Tune frame is received."""
         self.callbacks.add(0, spec.Connection.Tune, self._on_connection_tune)
 
+    def _add_connection_blocked_callback(self):
+        """Add a callback for when a Connection.Blocked frame is received."""
+        self.callbacks.add(0, spec.Connection.Blocked, self._on_connection_blocked)
+
+    def _add_connection_unblocked_callback(self):
+        """Add a callback for when a Connection.Unblocked frame is received."""
+        self.callbacks.add(0, spec.Connection.Unblocked, self._on_connection_unblocked)
+
     def _append_frame_buffer(self, value):
         """Append the bytes to the frame buffer.
 
@@ -880,7 +909,8 @@ class Connection(object):
                 'platform': 'Python %s' % platform.python_version(),
                 'capabilities': {'basic.nack': True,
                                  'consumer_cancel_notify': True,
-                                 'publisher_confirms': True},
+                                 'publisher_confirms': True,
+                                 'connection.blocked': True},
                 'information': 'See http://pika.rtfd.org',
                 'version': __version__}
 
@@ -1222,6 +1252,8 @@ class Connection(object):
         self._check_for_protocol_mismatch(method_frame)
         self._set_server_information(method_frame)
         self._add_connection_tune_callback()
+        self._add_connection_blocked_callback()
+        self._add_connection_unblocked_callback()
         self._send_connection_start_ok(*self._get_credentials(method_frame))
 
     def _on_connection_tune(self, method_frame):
@@ -1254,6 +1286,21 @@ class Connection(object):
 
         # Send the Connection.Open RPC call for the vhost
         self._send_connection_open()
+
+    def _on_connection_blocked(self, method_frame):
+        """This is called as a callback once we have received a Connection.Blocked
+
+        :param pika.frame.Method method_frame: The frame received
+        """
+        self.callbacks.process(0, self.ON_CONNECTION_BLOCKED, self, self,
+                               method_frame.method.reason)
+
+    def _on_connection_unblocked(self, method_frame):
+        """This is called as a callback once we have received a Connection.Unblocked
+
+        :param pika.frame.Method method_frame: The frame received
+        """
+        self.callbacks.process(0, self.ON_CONNECTION_UNBLOCKED, self, self)
 
     def _on_data_available(self, data_in):
         """This is called by our Adapter, passing in the data from the socket.
