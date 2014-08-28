@@ -79,7 +79,7 @@ please contact the RabbitMQ team at <info@rabbitmq.com>.
 
 
 .. |Status| image:: https://travis-ci.org/renshawbay/pika-python3.svg?branch=python3
-   :target: https://travis-ci.org/renshawbay/pika
+   :target: https://travis-ci.org/renshawbay/pika-python3
 
 .. |License| image:: https://pypip.in/license/pika/badge.svg?
    :target: https://pika.readthedocs.org
