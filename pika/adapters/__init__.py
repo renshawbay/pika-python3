@@ -16,6 +16,8 @@
   synchronous operation on top of library for simple uses.
 - adapters.twisted_connection.TwistedConnection: Connection adapter for use
   with the Twisted framework
+- adapters.libev_connection.LibevConnection: Connection adapter for use
+  with the libev event loop and employing nonblocking IO
 
 """
 from .base_connection import BaseConnection
@@ -31,8 +33,14 @@ except ImportError:
     TornadoConnection = None
 
 try:
-    from twisted_connection import TwistedConnection
-    from twisted_connection import TwistedProtocolConnection
+    from pika.adapters.twisted_connection import TwistedConnection
+    from pika.adapters.twisted_connection import TwistedProtocolConnection
 except ImportError:
     TwistedConnection = None
     TwistedProtocolConnection = None
+
+try:
+    from pika.adapters.libev_connection import LibevConnection
+except ImportError:
+    LibevConnection = None
+

@@ -2,6 +2,7 @@ language: python
 python:
   - "3.2"
 install:
-    - python setup.py install
-script:
-    - python setup.py test
+    - pip install --use-mirrors -r test-requirements.pip
+services:
+  - rabbitmq
+script: nosetests -c nose.cfg --with-coverage --cover-package=pika
