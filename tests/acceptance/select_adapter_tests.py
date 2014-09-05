@@ -286,7 +286,7 @@ class TestZ_PublishAndConsume(BoundQueueTestCase):
 
     def on_ready(self, frame):
         self.ctag = self.channel.basic_consume(self.on_message, self.queue)
-        self.msg_body = "%s: %i" % (self.__class__.__name__, time.time())
+        self.msg_body = ("%s: %i" % (self.__class__.__name__, time.time())).encode("utf-8")
         self.channel.basic_publish(self.exchange,
                                    self.routing_key,
                                    self.msg_body)
@@ -309,7 +309,7 @@ class TestZ_PublishAndConsume(BoundQueueTestCase):
 class TestZ_PublishAndConsumeBig(BoundQueueTestCase):
 
     def _get_msg_body(self):
-        return '\n'.join(["%s" % i for i in range(0, 2097152)])
+        return ('\n'.join(["%s" % i for i in range(0, 2097152)])).encode("utf-8")
 
     def on_ready(self, frame):
         self.ctag = self.channel.basic_consume(self.on_message, self.queue)
@@ -337,7 +337,7 @@ class TestZ_PublishAndConsumeBig(BoundQueueTestCase):
 class TestZ_PublishAndGet(BoundQueueTestCase):
 
     def on_ready(self, frame):
-        self.msg_body = "%s: %i" % (self.__class__.__name__, time.time())
+        self.msg_body = ("%s: %i" % (self.__class__.__name__, time.time())).encode("utf-8")
         self.channel.basic_publish(self.exchange,
                                    self.routing_key,
                                    self.msg_body)
