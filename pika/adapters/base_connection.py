@@ -357,9 +357,15 @@ class BaseConnection(connection.Connection):
         if self.outbound_buffer:
             frame = self.outbound_buffer.popleft()
             try:
-                self.socket.sendall(frame)
-                bytes_written = len(frame)
+                bytes_written = 0
+                while bytes_written < len(frame):
+                    sent = self.socket.send(frame[bytes_written:])
+                    if sent == 0:
+                        raise RuntimeError("socket connection broken")
+                    bytes_written += sent
             except socket.timeout:
+                LOGGER.debug("Timeout after partial send, requeueing %d bytes" % (len(frame) - bytes_written))
+                self.outbound_buffer.appendleft(frame[bytes_written:])
                 raise
             except socket.error as error:
                 return self._handle_error(error)
