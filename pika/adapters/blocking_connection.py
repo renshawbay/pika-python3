@@ -42,7 +42,7 @@ def retry_on_eintr(f):
             try:
                 return f(*args, **kwargs)
             except select.error as e:
-                if e[0] != errno.EINTR:
+                if e.args[0] != errno.EINTR:
                     raise
     return inner
 
